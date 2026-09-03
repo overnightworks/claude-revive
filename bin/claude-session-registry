@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# Claude Code hook: records every running session so that
+# claude-resume-crashed can reopen the ones that never ended (PC crash).
+# Registry: ~/.claude/live-sessions/<claude-pid>.json, one file per claude process.
+#
+# Configured in ~/.claude/settings.json as
+#   SessionStart: claude-session-registry start $PPID
+#   SessionEnd:   claude-session-registry end $PPID
+# The hook shell's $PPID is the claude process; this script itself is one
+# level deeper, so the pid has to be handed in.
+set -euo pipefail
+
+usage() {
+  echo "usage: claude-session-registry start|end CLAUDE_PID  (reads hook JSON on stdin)" >&2
+  exit 2
+}
+
+[ $# -eq 2 ] || usage
+action="$1"
+claude_pid="$2"
+registry="$HOME/.claude/live-sessions"
+entry="$registry/$claude_pid.json"
+
+case "$action" in
+  start)
+    mkdir -p "$registry"
+    # The hook event arrives on stdin; python's own script comes from the heredoc,
+    # so the event is handed over through the environment.
+    HOOK_EVENT="$(cat)" python3 - "$entry" "$claude_pid" <<'PY'
+import json, os, sys
+entry_path, pid = sys.argv[1], int(sys.argv[2])
+event = json.loads(os.environ["HOOK_EVENT"])
+with open("/proc/sys/kernel/random/boot_id") as f:
+    boot_id = f.read().strip()
+record = {
+    "pid": pid,
+    "bootId": boot_id,
+    "sessionId": event["session_id"],
+    "cwd": event["cwd"],
+}
+with open(entry_path, "w") as f:
+    json.dump(record, f)
+PY
+    ;;
+  end)
+    rm -f "$entry"
+    ;;
+  *)
+    usage
+    ;;
+esac

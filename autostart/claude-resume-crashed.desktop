@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Claude Code: abgestürzte Sessions wiederherstellen
+Comment=Öffnet nach einem Absturz jede unterbrochene Claude-Code-Session in einem eigenen Terminal
+Exec=bash -lc claude-resume-crashed
+X-GNOME-Autostart-Delay=15
+Terminal=false

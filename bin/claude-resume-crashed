@@ -1,0 +1,82 @@
+#!/usr/bin/env bash
+# Reopens every Claude Code session that is registered as live but whose
+# process no longer exists (PC crash, reboot, killed terminal).
+# Each session gets its own gnome-terminal window in its original directory.
+#
+#   claude-resume-crashed              reopen crashed sessions and tell them to carry on
+#   claude-resume-crashed --list       only show what would be reopened
+#   claude-resume-crashed --prompt T   send prompt T instead of the default one
+#   claude-resume-crashed --no-prompt  reopen at the input line, send nothing
+set -euo pipefail
+
+registry="$HOME/.claude/live-sessions"
+list_only=false
+prompt="Der Rechner ist abgestürzt, diese Session wurde automatisch wiederhergestellt. Fasse in zwei Sätzen zusammen, wo du standst, und mach dann dort weiter."
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --list) list_only=true ;;
+    --prompt) prompt="$2"; shift ;;
+    --no-prompt) prompt="" ;;
+    *) echo "unknown argument: $1" >&2; exit 2 ;;
+  esac
+  shift
+done
+
+current_boot_id=$(cat /proc/sys/kernel/random/boot_id)
+
+crashed_sessions() {
+  python3 - "$registry" "$current_boot_id" <<'PY'
+import json, os, sys
+registry, current_boot_id = sys.argv[1], sys.argv[2]
+if not os.path.isdir(registry):
+    sys.exit(0)
+
+def process_alive(pid):
+    try:
+        os.kill(pid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+
+for name in sorted(os.listdir(registry)):
+    path = os.path.join(registry, name)
+    with open(path) as f:
+        record = json.load(f)
+    same_boot = record["bootId"] == current_boot_id
+    if same_boot and process_alive(record["pid"]):
+        continue
+    print(f'{path}\t{record["sessionId"]}\t{record["cwd"]}')
+PY
+}
+
+found=0
+while IFS=$'\t' read -r entry session_id cwd; do
+  found=$((found + 1))
+  if $list_only; then
+    echo "$session_id  $cwd"
+    continue
+  fi
+  if [ ! -d "$cwd" ]; then
+    echo "skip $session_id: directory $cwd is gone" >&2
+    rm -f "$entry"
+    continue
+  fi
+  echo "resuming $session_id in $cwd"
+  # The resumed session re-registers itself via the SessionStart hook,
+  # so the crashed entry is dropped here to avoid a second resume later.
+  rm -f "$entry"
+  if [ -n "$prompt" ]; then
+    gnome-terminal --title="claude: $(basename "$cwd")" --working-directory="$cwd" \
+      -- claude --resume "$session_id" "$prompt"
+  else
+    gnome-terminal --title="claude: $(basename "$cwd")" --working-directory="$cwd" \
+      -- claude --resume "$session_id"
+  fi
+done < <(crashed_sessions)
+
+if [ "$found" -eq 0 ]; then
+  echo "no crashed sessions"
+fi
