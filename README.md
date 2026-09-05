@@ -37,7 +37,10 @@ claude-resume-crashed --prompt "…"  # reopen with your own prompt
 ```
 
 Nothing has to be typed after a crash; the autostart entry does the same as the
-plain invocation.
+plain invocation. Every run appends one line per decision to
+`~/.local/state/claude-revive/resume.log` and shows a desktop notification, so
+"did it run?" is answered without reading the journal. Windows open five seconds
+apart so the reopened heads do not all start working in the same second.
 
 ## Limits
 
@@ -47,8 +50,8 @@ plain invocation.
 - Sessions started from inside another Claude session (subagents, `claude -p`
   lanes, a `claude` typed into a Bash tool) are children of that session and
   are not tracked: they write no transcript of their own, so there is nothing to
-  resume. `claude-resume-crashed` strips the inherited `CLAUDE_*` variables so
-  the sessions it opens are top-level again.
+  resume. Such a session is told so on start. `claude-resume-crashed` strips
+  the inherited `CLAUDE_*` variables so the sessions it opens are top-level again.
 - Terminal is `gnome-terminal`; other terminals need a one-line change in
   `claude-resume-crashed`.
 - Requires Linux (`/proc`), `python3`, and Claude Code with hook support.

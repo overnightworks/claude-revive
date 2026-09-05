@@ -25,8 +25,13 @@ entry="$registry/$claude_pid.json"
 # Sessions spawned by another Claude session (subagents, `claude -p` lanes,
 # anything started from a Bash tool) belong to their parent: they write no
 # transcript of their own and must never be reopened as a window.
+# On start the person gets told, so a window opened by mistake from inside a
+# session (as happened on 2026-09-03) is noticed at once, not days later.
 if [ -n "${CLAUDE_CODE_CHILD_SESSION:-}" ]; then
   cat > /dev/null
+  if [ "$action" = start ]; then
+    printf '%s\n' '{"systemMessage": "claude-revive: this session was started from inside another Claude session (CLAUDE_CODE_CHILD_SESSION). It writes no transcript of its own, cannot be resumed and is not tracked for crash recovery. For real work, exit and start claude from a plain terminal."}'
+  fi
   exit 0
 fi
 

@@ -10,6 +10,10 @@
 set -euo pipefail
 
 registry="$HOME/.claude/live-sessions"
+log_file="${XDG_STATE_HOME:-$HOME/.local/state}/claude-revive/resume.log"
+# Seconds between two reopened windows: every resumed head starts working at
+# once, and five of them in the same second overbook the machine.
+launch_gap_seconds=5
 list_only=false
 prompt="Der Rechner ist abgestürzt, diese Session wurde automatisch wiederhergestellt. Fasse in zwei Sätzen zusammen, wo du standst, und mach dann dort weiter."
 
@@ -62,7 +66,20 @@ open_terminal() {
     gnome-terminal --title="claude: $(basename "$cwd")" --working-directory="$cwd" -- "$@"
 }
 
+log() {
+  echo "$*"
+  $list_only && return
+  mkdir -p "$(dirname "$log_file")"
+  echo "$(date '+%Y-%m-%d %H:%M:%S') $*" >> "$log_file"
+}
+
+notify() {
+  command -v notify-send > /dev/null || return 0
+  notify-send --app-name="Claude Code" "$1" "$2" 2> /dev/null || true
+}
+
 found=0
+resumed=0
 while IFS=$'\t' read -r entry session_id cwd; do
   found=$((found + 1))
   if $list_only; then
@@ -70,11 +87,12 @@ while IFS=$'\t' read -r entry session_id cwd; do
     continue
   fi
   if [ ! -d "$cwd" ]; then
-    echo "skip $session_id: directory $cwd is gone" >&2
+    log "skip $session_id: directory $cwd is gone"
     rm -f "$entry"
     continue
   fi
-  echo "resuming $session_id in $cwd"
+  [ "$resumed" -gt 0 ] && sleep "$launch_gap_seconds"
+  log "resuming $session_id in $cwd"
   # The resumed session re-registers itself via the SessionStart hook,
   # so the crashed entry is dropped here to avoid a second resume later.
   rm -f "$entry"
@@ -83,8 +101,14 @@ while IFS=$'\t' read -r entry session_id cwd; do
   else
     open_terminal "$cwd" claude --resume "$session_id"
   fi
+  resumed=$((resumed + 1))
 done < <(crashed_sessions)
 
-if [ "$found" -eq 0 ]; then
-  echo "no crashed sessions"
+if $list_only; then
+  [ "$found" -eq 0 ] && echo "no crashed sessions"
+elif [ "$resumed" -gt 0 ]; then
+  notify "Claude Code sessions restored" "$resumed session(s) reopened, see $log_file"
+else
+  log "no crashed sessions"
+  notify "Claude Code" "No crashed sessions to restore"
 fi
