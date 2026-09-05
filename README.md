@@ -41,9 +41,14 @@ plain invocation.
 
 ## Limits
 
-- Closing a terminal window with the mouse while Claude runs does not fire
-  `SessionEnd`, so that session stays in the registry and is reopened on the
-  next login. Exit with `Ctrl+C` or `/exit` instead.
+- Only `/exit`, `Ctrl+C`, `/clear` and `/logout` drop a session from the
+  registry. A session that ends any other way (terminal closed, desktop session
+  gone, process killed) is treated as crashed and reopened on the next login.
+- Sessions started from inside another Claude session (subagents, `claude -p`
+  lanes, a `claude` typed into a Bash tool) are children of that session and
+  are not tracked: they write no transcript of their own, so there is nothing to
+  resume. `claude-resume-crashed` strips the inherited `CLAUDE_*` variables so
+  the sessions it opens are top-level again.
 - Terminal is `gnome-terminal`; other terminals need a one-line change in
   `claude-resume-crashed`.
 - Requires Linux (`/proc`), `python3`, and Claude Code with hook support.

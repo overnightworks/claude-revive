@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Claude Code hook: records every running session so that
-# claude-resume-crashed can reopen the ones that never ended (PC crash).
+# Claude Code hook: records every running top-level session so that
+# claude-resume-crashed can reopen the ones that never ended (PC crash,
+# dead desktop session, killed terminal).
 # Registry: ~/.claude/live-sessions/<claude-pid>.json, one file per claude process.
 #
 # Configured in ~/.claude/settings.json as
@@ -20,6 +21,14 @@ action="$1"
 claude_pid="$2"
 registry="$HOME/.claude/live-sessions"
 entry="$registry/$claude_pid.json"
+
+# Sessions spawned by another Claude session (subagents, `claude -p` lanes,
+# anything started from a Bash tool) belong to their parent: they write no
+# transcript of their own and must never be reopened as a window.
+if [ -n "${CLAUDE_CODE_CHILD_SESSION:-}" ]; then
+  cat > /dev/null
+  exit 0
+fi
 
 case "$action" in
   start)
@@ -43,7 +52,13 @@ with open(entry_path, "w") as f:
 PY
     ;;
   end)
-    rm -f "$entry"
+    # SessionEnd also fires when the terminal dies under Claude (desktop session
+    # gone, window killed). Only an end the person asked for drops the entry;
+    # every other reason keeps it, so the next login reopens the session.
+    reason="$(python3 -c 'import json,sys; print(json.load(sys.stdin).get("reason", ""))')"
+    case "$reason" in
+      clear|logout|prompt_input_exit) rm -f "$entry" ;;
+    esac
     ;;
   *)
     usage
