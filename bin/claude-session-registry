@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Claude Code hook: records every running top-level session so that
+# Claude Code hook: records every running interactive top-level session so that
 # claude-resume-crashed can reopen the ones that never ended (PC crash,
 # dead desktop session, killed terminal).
 # Registry: ~/.claude/live-sessions/<claude-pid>.json, one file per claude process.
@@ -9,6 +9,11 @@
 #   SessionEnd:   claude-session-registry end $PPID
 # The hook shell's $PPID is the claude process; this script itself is one
 # level deeper, so the pid has to be handed in.
+#
+# Everything is judged from the claude process itself (/proc/<pid>), never from
+# this hook's environment: Claude Code marks every process it spawns, hooks
+# included, as CLAUDE_CODE_CHILD_SESSION, so the hook's own variables say
+# nothing about the session.
 set -euo pipefail
 
 usage() {
@@ -22,25 +27,40 @@ claude_pid="$2"
 registry="$HOME/.claude/live-sessions"
 entry="$registry/$claude_pid.json"
 
-# Sessions spawned by another Claude session (subagents, `claude -p` lanes,
-# anything started from a Bash tool) belong to their parent: they write no
-# transcript of their own and must never be reopened as a window.
-# On start the person gets told, so a window opened by mistake from inside a
-# session (as happened on 2026-09-03) is noticed at once, not days later.
-if [ -n "${CLAUDE_CODE_CHILD_SESSION:-}" ]; then
-  cat > /dev/null
-  if [ "$action" = start ]; then
-    printf '%s\n' '{"systemMessage": "claude-revive: this session was started from inside another Claude session (CLAUDE_CODE_CHILD_SESSION). It writes no transcript of its own, cannot be resumed and is not tracked for crash recovery. For real work, exit and start claude from a plain terminal."}'
-  fi
-  exit 0
-fi
+# A session spawned by another Claude session (subagent, `claude -p` lane,
+# anything started from a Bash tool) belongs to its parent: it writes no
+# transcript of its own and must never be reopened as a window.
+is_child_session() {
+  tr '\0' '\n' < "/proc/$claude_pid/environ" 2> /dev/null | grep -q '^CLAUDE_CODE_CHILD_SESSION='
+}
+
+terminal_of() {
+  local device
+  device="$(readlink "/proc/$claude_pid/fd/0" 2> /dev/null || true)"
+  case "$device" in
+    /dev/pts/*|/dev/tty*) echo "$device" ;;
+  esac
+}
+
+# A hung-up pty (its terminal is gone) refuses to be opened; a live one does not.
+terminal_alive() {
+  local device="$1"
+  [ -n "$device" ] && { : >> "$device"; } 2> /dev/null
+}
+
+hook_event="$(cat)"
 
 case "$action" in
   start)
+    if is_child_session; then
+      # Tell the person at once, so a window opened by mistake from inside a
+      # session (as happened on 2026-09-03) is noticed now, not days later.
+      printf '%s\n' '{"systemMessage": "claude-revive: this session was started from inside another Claude session (CLAUDE_CODE_CHILD_SESSION). It writes no transcript of its own, cannot be resumed and is not tracked for crash recovery. For real work, exit and start claude from a plain terminal."}'
+      exit 0
+    fi
+    [ -n "$(terminal_of)" ] || exit 0
     mkdir -p "$registry"
-    # The hook event arrives on stdin; python's own script comes from the heredoc,
-    # so the event is handed over through the environment.
-    HOOK_EVENT="$(cat)" python3 - "$entry" "$claude_pid" <<'PY'
+    HOOK_EVENT="$hook_event" python3 - "$entry" "$claude_pid" <<'PY'
 import json, os, sys
 entry_path, pid = sys.argv[1], int(sys.argv[2])
 event = json.loads(os.environ["HOOK_EVENT"])
@@ -57,13 +77,13 @@ with open(entry_path, "w") as f:
 PY
     ;;
   end)
-    # SessionEnd also fires when the terminal dies under Claude (desktop session
-    # gone, window killed). Only an end the person asked for drops the entry;
-    # every other reason keeps it, so the next login reopens the session.
-    reason="$(python3 -c 'import json,sys; print(json.load(sys.stdin).get("reason", ""))')"
-    case "$reason" in
-      clear|logout|prompt_input_exit) rm -f "$entry" ;;
-    esac
+    # SessionEnd fires for /exit and Ctrl+C, but also when the terminal dies
+    # under Claude (desktop session gone, window killed); the reported reason
+    # does not tell them apart. The terminal does: if it is still alive the
+    # end was wanted, otherwise the entry stays and the next login reopens it.
+    if terminal_alive "$(terminal_of)"; then
+      rm -f "$entry"
+    fi
     ;;
   *)
     usage

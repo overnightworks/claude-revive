@@ -44,9 +44,12 @@ apart so the reopened heads do not all start working in the same second.
 
 ## Limits
 
-- Only `/exit`, `Ctrl+C`, `/clear` and `/logout` drop a session from the
-  registry. A session that ends any other way (terminal closed, desktop session
-  gone, process killed) is treated as crashed and reopened on the next login.
+- Whether an end was wanted is judged by the terminal, not by the reported
+  reason (`/exit` and a dead terminal both report `other`): a session whose
+  terminal is still alive when it ends is dropped from the registry; one whose
+  terminal is gone (window closed, desktop session died, PC crashed) stays and
+  is reopened on the next login. Sessions without a terminal (`claude -p` from
+  a job) are never registered.
 - Sessions started from inside another Claude session (subagents, `claude -p`
   lanes, a `claude` typed into a Bash tool) are children of that session and
   are not tracked: they write no transcript of their own, so there is nothing to
