@@ -72,6 +72,16 @@ record = {
     "sessionId": event["session_id"],
     "cwd": event["cwd"],
 }
+# A session resumed by hand supersedes its crashed predecessor; without this
+# the next login would open the same conversation a second time.
+registry = os.path.dirname(entry_path)
+for name in os.listdir(registry):
+    path = os.path.join(registry, name)
+    if path == entry_path:
+        continue
+    with open(path) as f:
+        if json.load(f)["sessionId"] == record["sessionId"]:
+            os.remove(path)
 with open(entry_path, "w") as f:
     json.dump(record, f)
 PY
