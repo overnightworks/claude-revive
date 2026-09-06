@@ -19,13 +19,13 @@ interrupted session, resumed in its original directory, told to carry on.
 
 ```bash
 git clone https://github.com/FlexOr2/claude-revive ~/git/claude-revive
-~/git/claude-revive/install.sh
+~/git/claude-revive/scripts/install.sh
 ```
 
-`install.sh` symlinks the scripts into `~/.local/bin`, the desktop entry into
-`~/.config/autostart`, and adds the two hooks to `~/.claude/settings.json`.
-Sessions started after that point are tracked. Re-run it after a `git pull`; it
-is idempotent.
+`scripts/install.sh` symlinks the scripts into `~/.local/bin`, the desktop
+entry into `~/.config/autostart`, and adds the two hooks to
+`~/.claude/settings.json`. Sessions started after that point are tracked.
+Re-run it after a `git pull`; it is idempotent.
 
 ## Use
 
