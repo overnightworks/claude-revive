@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+        with:
+          persist-credentials: false
+      # The gate and its test need nothing beyond the standard library, so
+      # they run on the runner's own python: this repository is shell, and a
+      # python project around it would be machinery without an owner.
+      - name: Check the repository root layout
+        run: python3 scripts/check_root_layout.py
+      - name: Test the root layout gate
+        run: python3 -m unittest discover --start-directory scripts --pattern 'test_*.py' --verbose
+      - name: Check the shell scripts parse
+        run: |
+          for script in bin/* scripts/*.sh; do
+            bash -n "$script"
+          done

@@ -4,7 +4,7 @@
 # Safe to run again after a git pull.
 set -euo pipefail
 
-repo="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 bin_dir="$HOME/.local/bin"
 autostart_dir="$HOME/.config/autostart"
 settings="$HOME/.claude/settings.json"
