@@ -23,10 +23,16 @@ jobs:
       # python project around it would be machinery without an owner.
       - name: Check the repository root layout
         run: python3 scripts/check_root_layout.py
-      - name: Test the root layout gate
+      - name: Run the tests under scripts/
         run: python3 -m unittest discover --start-directory scripts --pattern 'test_*.py' --verbose
-      - name: Check the shell scripts parse
+      # failglob turns a pattern that matches nothing into a loud failure: a
+      # loop that silently checks no files would report green while a command
+      # under bin/ had lost its executable bit, and the autostart entry would
+      # simply stop recovering sessions.
+      - name: Check the shell scripts parse and stay executable
         run: |
+          shopt -s failglob
           for script in bin/* scripts/*.sh; do
             bash -n "$script"
+            test -x "$script" || { echo "$script is not executable"; exit 1; }
           done
