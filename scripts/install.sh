@@ -15,15 +15,17 @@ ln -sfn "$repo/bin/claude-resume-crashed" "$bin_dir/claude-resume-crashed"
 ln -sfn "$repo/autostart/claude-resume-crashed.desktop" "$autostart_dir/claude-resume-crashed.desktop"
 
 python3 - "$settings" <<'PY'
-import json, os, sys
+import json, os, stat, sys
 path = sys.argv[1]
 # Parsing comes before anything is written: a settings file this cannot read is
 # the operator's to repair, and the install refuses rather than replacing it.
 try:
     with open(path) as f:
         settings = json.load(f)
+        existing_mode = stat.S_IMODE(os.fstat(f.fileno()).st_mode)
 except FileNotFoundError:
     settings = {}
+    existing_mode = None
 hooks = settings.setdefault("hooks", {})
 for event, action in (("SessionStart", "start"), ("SessionEnd", "end")):
     command = f"$HOME/.local/bin/claude-session-registry {action} $PPID"
@@ -40,6 +42,12 @@ being_written = path + ".installing"
 with open(being_written, "w") as f:
     json.dump(settings, f, indent=2)
     f.write("\n")
+    # The replacement carries the permissions of the file it replaces: a
+    # settings file the operator kept owner-only must not come back readable by
+    # everyone because a fresh file picked up the umask, and this file holds an
+    # environment block. A file this install creates keeps the umask default.
+    if existing_mode is not None:
+        os.fchmod(f.fileno(), existing_mode)
     f.flush()
     os.fsync(f.fileno())
 os.replace(being_written, path)

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import stat
 import subprocess
 import tempfile
 import unittest
@@ -103,6 +104,19 @@ class InstallIntoAThrowawayHome(unittest.TestCase):
         self.assertNotEqual(completed.returncode, 0)
         self.assertEqual(self.settings.read_text(encoding="utf-8"), malformed)
         self.assertEqual([path.name for path in self.settings.parent.iterdir()], ["settings.json"])
+
+    def test_a_settings_file_kept_owner_only_is_still_owner_only_afterwards(self) -> None:
+        """The replacement inherits the permissions of the file it replaces.
+
+        Writing a fresh file and renaming it would otherwise hand the operator's
+        settings — which carry an environment block — whatever the umask allows.
+        """
+        self.write_settings(json.dumps({"model": "opus"}))
+        self.settings.chmod(0o600)
+
+        self.install_successfully()
+
+        self.assertEqual(stat.S_IMODE(self.settings.stat().st_mode), 0o600)
 
     def test_a_reader_holding_the_settings_file_open_sees_all_of_the_old_content(self) -> None:
         """The proof that the file is replaced by a rename instead of rewritten.
