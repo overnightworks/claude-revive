@@ -15,10 +15,13 @@ ln -sfn "$repo/bin/claude-resume-crashed" "$bin_dir/claude-resume-crashed"
 ln -sfn "$repo/autostart/claude-resume-crashed.desktop" "$autostart_dir/claude-resume-crashed.desktop"
 
 python3 - "$settings" <<'PY'
-import json, sys
+import json, os, sys
 path = sys.argv[1]
+# Parsing comes before anything is written: a settings file this cannot read is
+# the operator's to repair, and the install refuses rather than replacing it.
 try:
-    settings = json.load(open(path))
+    with open(path) as f:
+        settings = json.load(f)
 except FileNotFoundError:
     settings = {}
 hooks = settings.setdefault("hooks", {})
@@ -28,9 +31,18 @@ for event, action in (("SessionStart", "start"), ("SessionEnd", "end")):
     already = any(h.get("command") == command for e in entries for h in e.get("hooks", []))
     if not already:
         entries.append({"hooks": [{"type": "command", "command": command}]})
-with open(path, "w") as f:
+# The file is replaced by a rename rather than rewritten in place, so a crash,
+# a full disk or a closed terminal leaves the operator's original settings
+# untouched instead of truncated. The temporary sibling shares the directory
+# because a rename is atomic only within one filesystem, and its fixed name is
+# overwritten by the next run rather than accumulating.
+being_written = path + ".installing"
+with open(being_written, "w") as f:
     json.dump(settings, f, indent=2)
     f.write("\n")
+    f.flush()
+    os.fsync(f.fileno())
+os.replace(being_written, path)
 PY
 
 echo "installed. Sessions started from now on are registered; run 'claude-resume-crashed --list' to check."
