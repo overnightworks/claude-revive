@@ -33,7 +33,7 @@ HOME_BY_SUFFIX = {
     ".py": "a helper belongs under scripts/",
     ".sh": "a helper belongs under scripts/",
 }
-DEFAULT_HOME = "the root holds only what a tool must find there; a file lives in the directory of its owner"
+DEFAULT_HOME = "a command belongs under bin/, anything else in the directory of its owner"
 DIRECTORY_HOME = "a new top-level directory needs a named owner and an entry in scripts/check_root_layout.py"
 # The gate judges the repository that carries it, never the caller's working
 # directory: `git ls-files` prints paths relative to the cwd, so a run from
