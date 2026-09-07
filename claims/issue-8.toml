@@ -1,8 +1,0 @@
-claim_id = "e890aa8b797640afb4429497f7acac33"
-agent = "claude"
-role = "builder"
-base = "58d51b3a091ad5144f5f2200be7c8de8c97c4457"
-branch = "claude/issue-8-consume-the-action"
-scope = [".github/workflows/ci.yml", "scripts/sonar_findings_gate.py", "scripts/test_sonar_findings_gate.py"]
-opened_commit = "34519de390a0e9a40db5de2ea6b694acf9e2594b"
-whole_reason = "the step that consumes the action and the two files it makes redundant are one change"
