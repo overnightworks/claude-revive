@@ -14,6 +14,11 @@ permissions:
 jobs:
   check:
     runs-on: ubuntu-latest
+    # A fork's pull request receives none of this repository's secrets, so the
+    # findings gate below arms itself on the credential it needs rather than on
+    # a guess about the event that started the run.
+    env:
+      SONAR_ENABLED: ${{ secrets.SONAR_TOKEN != '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
         with:
@@ -36,3 +41,32 @@ jobs:
             bash -n "$script"
             test -x "$script" || { echo "$script is not executable"; exit 1; }
           done
+      # Unguarded on purpose: a green run must say whether it asserted the
+      # findings or deliberately skipped, because a step that is silently
+      # conditioned away reads as a proof it never produced.
+      - name: Report the skip when no SONAR_TOKEN reaches this run
+        if: ${{ env.SONAR_ENABLED != 'true' }}
+        run: >-
+          echo "::notice::SonarCloud open findings skipped: this run receives no
+          SONAR_TOKEN, as a fork's pull request gets none of this repository's
+          secrets, so the findings were never read. The code is checked against
+          SonarCloud once it runs from a branch in this repository."
+      # SonarCloud analyses this project itself and grades it against a quality
+      # gate of ratings, which a finding accepted or marked false positive in
+      # its web interface leaves entirely; the interface is never the place to
+      # silence a finding. So this step asks the API for the open findings of
+      # this exact scope and fails with the list. How it asks -- the encoded
+      # scope, the proof that the scope resolves before a zero reads as clean,
+      # the credential that never leaves a header -- is owned by the script,
+      # which the tests above cover.
+      - name: SonarCloud open findings
+        if: ${{ env.SONAR_ENABLED == 'true' }}
+        # The script bounds each call; this is the hard ceiling, because it
+        # pages and a per-call bound multiplies.
+        timeout-minutes: 5
+        env:
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+          PULL_REQUEST_NUMBER: ${{ github.event.pull_request.number }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: python3 scripts/sonar_findings_gate.py
